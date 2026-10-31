@@ -1,0 +1,325 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inbox Quest - Email Game</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #111827;
+  color: white;
+}
+header {
+  padding: 22px;
+  background: #1f2937;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+}
+header h1 { color: #a78bfa; margin: 0; }
+.stats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.stat {
+  background: #374151;
+  padding: 12px 18px;
+  border-radius: 12px;
+}
+.container {
+  max-width: 1050px;
+  margin: 25px auto;
+  padding: 15px;
+}
+.dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit,minmax(180px,1fr));
+  gap: 15px;
+}
+.card {
+  background: #1f2937;
+  padding: 20px;
+  border-radius: 15px;
+  margin-bottom: 18px;
+}
+.card h3 { color: #c4b5fd; }
+.progress {
+  height: 12px;
+  background: #374151;
+  border-radius: 20px;
+  overflow: hidden;
+}
+.bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg,#8b5cf6,#ec4899);
+  transition: .3s;
+}
+.email {
+  background: #374151;
+  padding: 16px;
+  border-radius: 12px;
+  margin: 12px 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.email.done { opacity: .5; }
+button {
+  border: none;
+  background: #8b5cf6;
+  color: white;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+}
+button:hover { background: #7c3aed; }
+button:disabled { background: #4b5563; cursor: default; }
+.badges {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.badge {
+  padding: 12px;
+  border-radius: 10px;
+  background: #374151;
+}
+.locked { opacity: .3; }
+.small { color: #9ca3af; font-size: 13px; }
+#toast {
+  position: fixed;
+  bottom: 25px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #7c3aed;
+  padding: 15px 22px;
+  border-radius: 12px;
+  display: none;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎮 Inbox Quest</h1>
+  <div class="stats">
+    <div class="stat">⭐ XP: <span id="xp">0</span></div>
+    <div class="stat">🏆 Level: <span id="level">1</span></div>
+    <div class="stat">🔥 Streak: <span id="streak">1</span></div>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="dashboard">
+    <div class="card">
+      <h3>📩 Emails Completed</h3>
+      <h2 id="completed">0</h2>
+    </div>
+    <div class="card">
+      <h3>🎯 Remaining Emails</h3>
+      <h2 id="remaining">5</h2>
+    </div>
+    <div class="card">
+      <h3>💎 Total Coins</h3>
+      <h2 id="coins">0</h2>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>🚀 Level Progress</h3>
+    <p>Next level: <span id="nextXP">100</span> XP</p>
+    <div class="progress">
+      <div class="bar" id="progress"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>📬 Your Email Missions</h3>
+    <p class="small">Complete email tasks to earn 20 XP and 10 coins each.</p>
+    <div id="emailList"></div>
+  </div>
+
+  <div class="card">
+    <h3>🎯 Daily Quest</h3>
+    <p>Complete 3 emails to earn a bonus of 50 XP!</p>
+    <div class="progress">
+      <div class="bar" id="questProgress"></div>
+    </div>
+    <p id="questText">0 / 3 completed</p>
+  </div>
+
+  <div class="card">
+    <h3>🏅 Achievements</h3>
+    <div class="badges" id="badges"></div>
+  </div>
+
+  <div class="card">
+    <h3>🔄 Game Controls</h3>
+    <button onclick="resetGame()">Reset Game</button>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+const emails = [
+  {id:1, sender:"Alex Morgan", subject:"Project meeting invitation", task:"Review meeting details"},
+  {id:2, sender:"HR Department", subject:"Complete employee feedback", task:"Review feedback request"},
+  {id:3, sender:"Sarah Wilson", subject:"Client proposal", task:"Review the proposal"},
+  {id:4, sender:"Marketing Team", subject:"Campaign update", task:"Read campaign update"},
+  {id:5, sender:"David Lee", subject:"Weekly report", task:"Review weekly report"}
+];
+
+let xp = 0;
+let coins = 0;
+let completed = [];
+let bonusClaimed = false;
+let streak = 1;
+
+const achievements = [
+  {name:"🌱 First Step", count:1},
+  {name:"⚡ Email Rookie", count:3},
+  {name:"🔥 Inbox Master", count:5},
+  {name:"👑 Email Legend", count:10}
+];
+
+function loadGame() {
+  const saved = localStorage.getItem("inboxQuest");
+  if(saved) {
+    try {
+      const data = JSON.parse(saved);
+      xp = Number(data.xp) || 0;
+      coins = Number(data.coins) || 0;
+      completed = Array.isArray(data.completed)
+        ? data.completed.filter(id => emails.some(e => e.id === id))
+        : [];
+      bonusClaimed = Boolean(data.bonusClaimed);
+      streak = Number(data.streak) || 1;
+    } catch(e) {}
+  }
+  render();
+}
+
+function saveGame() {
+  localStorage.setItem("inboxQuest", JSON.stringify({
+    xp, coins, completed, bonusClaimed, streak
+  }));
+}
+
+function render() {
+  const level = Math.floor(xp / 100) + 1;
+  const levelXP = xp % 100;
+
+  document.getElementById("xp").textContent = xp;
+  document.getElementById("level").textContent = level;
+  document.getElementById("streak").textContent = streak;
+  document.getElementById("coins").textContent = coins;
+  document.getElementById("completed").textContent = completed.length;
+  document.getElementById("remaining").textContent =
+    emails.length - completed.length;
+  document.getElementById("nextXP").textContent = level * 100;
+  document.getElementById("progress").style.width = levelXP + "%";
+
+  const list = document.getElementById("emailList");
+  list.innerHTML = "";
+
+  emails.forEach(email => {
+    const done = completed.includes(email.id);
+    const div = document.createElement("div");
+    div.className = "email" + (done ? " done" : "");
+
+    const info = document.createElement("div");
+    const sender = document.createElement("strong");
+    sender.textContent = email.sender;
+    const subject = document.createElement("p");
+    subject.textContent = "✉️ " + email.subject;
+    const task = document.createElement("span");
+    task.className = "small";
+    task.textContent = email.task;
+    info.append(sender, subject, task);
+
+    const btn = document.createElement("button");
+    btn.textContent = done ? "✓ Completed" : "Complete +20 XP";
+    btn.disabled = done;
+    btn.onclick = () => completeEmail(email.id);
+
+    div.append(info, btn);
+    list.appendChild(div);
+  });
+
+  document.getElementById("questProgress").style.width =
+    Math.min(completed.length / 3 * 100, 100) + "%";
+
+  document.getElementById("questText").textContent =
+    Math.min(completed.length,3) + " / 3 completed";
+
+  if(completed.length >= 3 && !bonusClaimed) {
+    xp += 50;
+    bonusClaimed = true;
+    showToast("🎉 Daily Quest completed! +50 XP");
+    saveGame();
+    render();
+    return;
+  }
+
+  const badgeBox = document.getElementById("badges");
+  badgeBox.innerHTML = "";
+
+  achievements.forEach(a => {
+    const unlocked = completed.length >= a.count;
+    const div = document.createElement("div");
+    div.className = "badge" + (unlocked ? "" : " locked");
+    div.textContent = a.name + (unlocked ? " ✓" : " 🔒");
+    badgeBox.appendChild(div);
+  });
+}
+
+function completeEmail(id) {
+  if(completed.includes(id)) return;
+
+  completed.push(id);
+  xp += 20;
+  coins += 10;
+
+  showToast("⭐ Email completed! +20 XP +10 Coins");
+  saveGame();
+  render();
+}
+
+function showToast(message) {
+  const toast = document.getElementById("toast");
+  toast.textContent = message;
+  toast.style.display = "block";
+  setTimeout(() => toast.style.display = "none", 2500);
+}
+
+function resetGame() {
+  if(!confirm("Are you sure you want to reset your game?")) return;
+
+  xp = 0;
+  coins = 0;
+  completed = [];
+  bonusClaimed = false;
+  streak = 1;
+
+  saveGame();
+  render();
+}
+
+loadGame();
+</script>
+
+</body>
+</html>
